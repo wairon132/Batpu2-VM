@@ -1,3 +1,8 @@
+This repository is a fork of [BatPU2-VM](https://github.com/AdoHTQ/Batpu2-VM) by @wairon132 with some minor modifications.
+The [BatPU-2](https://github.com/mattbatwings/BatPU-2)'s 1-bit display is replaced with a 16-bit color display, implemented by a redstone dust retexture, with full backwards compatibility with the previous 1-bit display.
+
+## Original readme
+
 Virtual Machine/Assembler for mattbatwings new redstone CPU. Read below instructions and controls.
 
 Instructions:
