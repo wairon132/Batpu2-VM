@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bvgov7lqauaae"
-path="res://.godot/imported/flat_on.png-8ec434c51b2a753f80b934e42fb63542.ctex"
+uid="uid://c2gl77db6lp1e"
+path="res://.godot/imported/magus-8x.png-5434bcfa740612b5e43817b993cb4e38.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://textures/flat_on.png"
-dest_files=["res://.godot/imported/flat_on.png-8ec434c51b2a753f80b934e42fb63542.ctex"]
+source_file="res://textures/magus-8x.png"
+dest_files=["res://.godot/imported/magus-8x.png-5434bcfa740612b5e43817b993cb4e38.ctex"]
 
 [params]
 

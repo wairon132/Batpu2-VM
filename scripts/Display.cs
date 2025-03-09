@@ -1,6 +1,6 @@
 using Godot;
-using System;
 using Godot.Collections;
+using System;
 using System.Linq;
 using System.Collections.Generic;
 
@@ -10,34 +10,59 @@ public partial class Display : Node
 	[Export] Vector2I resolution;
 
 	[ExportCategory("References")]
-	[Export] Texture2D[] offSprites;
-	[Export] Texture2D[] onSprites;
-	//[Export] OptionButton DisplayTexture;
+	[Export] Texture2D[] TexturesSheet;
+	[Export] OptionButton DisplayTexture;
 	[Export] Label NumDisplay;
 	[Export] Label TextDisplay;
 
 	public bool displayInitialized { get; private set; }
 
-	private bool[,] displayBuffer;
-	private bool[,] displayBufferBuffer;
+	private byte[,] displayBuffer;
+	private byte[,] displayBufferBuffer;
 	private string charBuffer = "";
 	private int displayedNum = 0;
 	private bool unsigned = true;
 	public bool shouldRender = false;
 
-	private int texture;
+	private AtlasTexture[,] Textures;
+	private int textureIndex = 0;
 
 	private Vector2I pixelPos;
 
 	private List<char> charValues = new List<char> {' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '.', '!', '?'};
 
-    public void DisplayInit()
-    {
-        displayedNum = 0;
-        displayBuffer = new bool[resolution.X, resolution.Y];
-        displayBufferBuffer = new bool[resolution.X, resolution.Y];
-        TextDisplay.Text = "__________";
-        NumDisplay.Text = "" + displayedNum;
+	public void _ready()
+	{
+		//Split Texture Sheet
+		int length = 16;
+		Textures = new AtlasTexture[TexturesSheet.Length, length];
+		for(var i = 0; i < TexturesSheet.Length; i++)
+		{
+			var size = TexturesSheet[i].GetSize();
+			var region_width = size.X / length;
+			
+			for(var j = 0; j < length; j++)
+			{
+				var atlas = new AtlasTexture();
+				atlas.Atlas = TexturesSheet[i];
+				atlas.Region = new Rect2(region_width * j, 0, size.X / length, size.Y);
+				Textures[i, j] = atlas;
+			}
+		}
+	}
+
+	public Texture2D GetTexture(int pixelNumber = 0)
+	{
+		return Textures[textureIndex, pixelNumber];
+	}
+
+	public void DisplayInit()
+	{
+		displayedNum = 0;
+		displayBuffer = new byte[resolution.X, resolution.Y];
+		displayBufferBuffer = new byte[resolution.X, resolution.Y];
+		TextDisplay.Text = "__________";
+		NumDisplay.Text = "" + displayedNum;
 
 		if (displayInitialized) return;
 		for (int x = 0; x < resolution.X; x++)
@@ -45,7 +70,7 @@ public partial class Display : Node
 			for (int y = 0; y < resolution.Y; y++)
 			{
 				TextureRect sprite = new TextureRect();
-				sprite.Texture = offSprites[texture];
+				sprite.Texture = GetTexture(0);
 				AddChild(sprite);
 			}
 		}
@@ -53,13 +78,15 @@ public partial class Display : Node
 		displayInitialized = true;
 	}
 
-	public void UpdateSprites(int index)
+	public void UpdateSprites(int index = -1)
 	{
-		texture = index;
+		if (index != -1) { textureIndex = index; }
 		Array<Node> children = GetChildren();
-		foreach (Node child in children)
+		int pixels = resolution.X * resolution.Y;
+		for (int i = 0; i < pixels; i++)
 		{
-			(child as TextureRect).Texture = offSprites[texture];
+			TextureRect child = children[i] as TextureRect;
+			child.Texture = GetTexture(displayBuffer[i % resolution.X, i / resolution.Y]);
 		}
 	}
 
@@ -71,19 +98,13 @@ public partial class Display : Node
 
 	public void PushBuffer()
 	{
-		Array<Node> children = GetChildren();
-		int pixels = resolution.X * resolution.Y;
-		for (int i = 0; i < pixels; i++)
-		{
-			TextureRect child = children[i] as TextureRect;
-			child.Texture = displayBuffer[i % resolution.X, i / resolution.Y] ? onSprites[texture] : offSprites[texture];
-		}
+		UpdateSprites(-1);
 	}
 
 	public void ClearBuffer()
 	{
 		for (int x = 0; x < resolution.X * resolution.Y; x++)
-			displayBufferBuffer[x%resolution.X, x/resolution.Y] = false;
+			displayBufferBuffer[x%resolution.X, x/resolution.Y] = 0;
 	}
 
 	public void StorePort(byte port, byte data)
@@ -101,17 +122,20 @@ public partial class Display : Node
 			//Draw Pixel
 			case 242:
 				if (pixelPos.X >= resolution.X || pixelPos.Y >= resolution.Y) break;
-				displayBufferBuffer[pixelPos.X, resolution.Y - 1 - pixelPos.Y] = true;
+				var color = (byte)(data & 0b00001111);
+				if (color == 0) { color = 1; }
+				displayBufferBuffer[pixelPos.X, resolution.Y - 1 - pixelPos.Y] = color;
 				break;
 			//Clear Pixel
 			case 243:
 				if (pixelPos.X >= resolution.X || pixelPos.Y >= resolution.Y) break;
-				displayBufferBuffer[pixelPos.X, resolution.Y - 1 - pixelPos.Y] = false;
+				displayBufferBuffer[pixelPos.X, resolution.Y - 1 - pixelPos.Y] = 0;
 				break;
 			//Buffer screen
 			case 245:
 				System.Array.Copy(displayBufferBuffer, 0, displayBuffer, 0, resolution.X * resolution.Y);
 				shouldRender = true;
+				PushBuffer();
 				break;
 			//Clear Screen Buffer
 			case 246:
@@ -148,36 +172,36 @@ public partial class Display : Node
 				unsigned = true;
 				UpdateNumDisplay();
 				break;
-            default:
-                break;
+			default:
+				break;
 		}
 	}
 
-    public static string PadWithUnderscores(string inputString)
-    {
-        if (inputString == null)
-        {
-            throw new ArgumentNullException(nameof(inputString));
-        }
+	public static string PadWithUnderscores(string inputString)
+	{
+		if (inputString == null)
+		{
+			throw new ArgumentNullException(nameof(inputString));
+		}
 
-        int targetLength = 10;
-        int padLength = targetLength - inputString.Length;
-        return padLength > 0 ? inputString.PadRight(targetLength, '_') : inputString;
-    }
+		int targetLength = 10;
+		int padLength = targetLength - inputString.Length;
+		return padLength > 0 ? inputString.PadRight(targetLength, '_') : inputString;
+	}
 
 	public byte LoadPort(byte port)
 	{
 		switch (port)
 		{
 			case 244:
-				return (byte)(displayBufferBuffer[pixelPos.X, resolution.Y - 1 - pixelPos.Y] ? 1 : 0);
+				return (byte)(displayBufferBuffer[pixelPos.X, resolution.Y - 1 - pixelPos.Y]);
 			case 254:
 				Random rand = new Random();
 				return (byte)rand.Next();
 			case 255:
 				return GetInputs();
-            default:
-                return 0;
+			default:
+				return 0;
 		}
 	}
 
