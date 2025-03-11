@@ -3,10 +3,12 @@ using Godot.Collections;
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
-public partial class Display : Node
+public partial class Display : GridContainer
 {
 	[ExportCategory("Properties")]
+	[Export] double framerate = 30;
 	[Export] Vector2I resolution;
 
 	[ExportCategory("References")]
@@ -15,24 +17,39 @@ public partial class Display : Node
 	[Export] Label NumDisplay;
 	[Export] Label TextDisplay;
 
-	public bool displayInitialized { get; private set; }
-
 	private byte[,] displayBuffer;
 	private byte[,] displayBufferBuffer;
 	private string charBuffer = "";
 	private int displayedNum = 0;
 	private bool unsigned = true;
-	public bool shouldRender = false;
 
 	private AtlasTexture[,] Textures;
 	private int textureIndex = 0;
+	private int resolutionIndex = 1;
+	private double time = 0;
 
 	private Vector2I pixelPos;
 
 	private List<char> charValues = new List<char> {' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '.', '!', '?'};
 
+	private List<Vector2I> resolutionList = new List<Vector2I> {
+		new Vector2I(16,16),
+		new Vector2I(32,32),
+		new Vector2I(64,64),
+		new Vector2I(128,128)
+		};
+	
+	private List<Vector2I> spriteSizeList = new List<Vector2I> {
+		new Vector2I(32,32),
+		new Vector2I(16,16),
+		new Vector2I(8,8),
+		new Vector2I(4,4)
+		};
+
 	public void _ready()
 	{
+		time = Time.GetUnixTimeFromSystem();
+
 		//Split Texture Sheet
 		int length = 16;
 		Textures = new AtlasTexture[TexturesSheet.Length, length];
@@ -49,6 +66,9 @@ public partial class Display : Node
 				Textures[i, j] = atlas;
 			}
 		}
+
+		DisplaySetup();
+		DisplayInit();
 	}
 
 	public Texture2D GetTexture(int pixelNumber = 0)
@@ -59,34 +79,65 @@ public partial class Display : Node
 	public void DisplayInit()
 	{
 		displayedNum = 0;
-		displayBuffer = new byte[resolution.X, resolution.Y];
-		displayBufferBuffer = new byte[resolution.X, resolution.Y];
 		TextDisplay.Text = "__________";
 		NumDisplay.Text = "" + displayedNum;
+		UpdateSprites();
+	}
 
-		if (displayInitialized) return;
+	public void DisplaySetup()
+	{
+		resolution = resolutionList[resolutionIndex];
+		displayBuffer = new byte[resolution.X, resolution.Y];
+		displayBufferBuffer = new byte[resolution.X, resolution.Y];
+		Columns = resolution.X;
+
+		foreach(Node i in GetChildren())
+		{
+			RemoveChild(i);
+		}
+
 		for (int x = 0; x < resolution.X; x++)
 		{
 			for (int y = 0; y < resolution.Y; y++)
 			{
 				TextureRect sprite = new TextureRect();
-				sprite.Texture = GetTexture(0);
+				sprite.Texture = GetTexture(textureIndex);
+				sprite.CustomMinimumSize = spriteSizeList[resolutionIndex];
+				sprite.Size = spriteSizeList[resolutionIndex];
+				sprite.ExpandMode = (TextureRect.ExpandModeEnum)1;
 				AddChild(sprite);
 			}
 		}
-
-		displayInitialized = true;
 	}
 
-	public void UpdateSprites(int index = -1)
+	public void ChangeResolution(int index = -1)
 	{
-		if (index != -1) { textureIndex = index; }
-		Array<Node> children = GetChildren();
-		int pixels = resolution.X * resolution.Y;
-		for (int i = 0; i < pixels; i++)
+		if (index == -1) { return; }
+		resolutionIndex = index;
+		DisplaySetup();
+		UpdateSprites();
+		GetOwner<Main>().Reset();
+	}
+
+	public void ChangeTexture(int index = -1)
+	{
+		if (index == -1) { return; }
+		textureIndex = index;
+		UpdateSprites();
+	}
+
+	public void UpdateSprites(bool force = false)
+	{
+		if (Time.GetUnixTimeFromSystem() - time >= 1d / framerate || force)
 		{
-			TextureRect child = children[i] as TextureRect;
-			child.Texture = GetTexture(displayBuffer[i % resolution.X, i / resolution.Y]);
+			Array<Node> children = GetChildren();
+			int pixels = resolution.X * resolution.Y;
+			for (int i = 0; i < pixels; i++)
+			{
+				TextureRect child = children[i] as TextureRect;
+				child.Texture = GetTexture(displayBuffer[i % resolution.X, i / resolution.Y]);
+			}
+			time = Time.GetUnixTimeFromSystem();
 		}
 	}
 
@@ -98,7 +149,8 @@ public partial class Display : Node
 
 	public void PushBuffer()
 	{
-		UpdateSprites(-1);
+		System.Array.Copy(displayBufferBuffer, 0, displayBuffer, 0, resolution.X * resolution.Y);
+		UpdateSprites();
 	}
 
 	public void ClearBuffer()
@@ -113,28 +165,26 @@ public partial class Display : Node
 		{
 			//Pixel X
 			case 240:
-				pixelPos.X = data & 0b00011111;
+				pixelPos.X = data;
+				pixelPos.X = pixelPos.X % resolution.X;
 				break;
 			//Pixel Y
 			case 241:
-				pixelPos.Y = data & 0b00011111;
+				pixelPos.Y = data;
+				pixelPos.Y = resolution.Y - 1 - pixelPos.Y % resolution.Y;
 				break;
 			//Draw Pixel
 			case 242:
-				if (pixelPos.X >= resolution.X || pixelPos.Y >= resolution.Y) break;
 				var color = (byte)(data & 0b00001111);
 				if (color == 0) { color = 1; }
-				displayBufferBuffer[pixelPos.X, resolution.Y - 1 - pixelPos.Y] = color;
+				displayBufferBuffer[pixelPos.X, pixelPos.Y] = color;
 				break;
 			//Clear Pixel
 			case 243:
-				if (pixelPos.X >= resolution.X || pixelPos.Y >= resolution.Y) break;
-				displayBufferBuffer[pixelPos.X, resolution.Y - 1 - pixelPos.Y] = 0;
+				displayBufferBuffer[pixelPos.X, pixelPos.Y] = 0;
 				break;
 			//Buffer screen
 			case 245:
-				System.Array.Copy(displayBufferBuffer, 0, displayBuffer, 0, resolution.X * resolution.Y);
-				shouldRender = true;
 				PushBuffer();
 				break;
 			//Clear Screen Buffer
@@ -194,7 +244,7 @@ public partial class Display : Node
 		switch (port)
 		{
 			case 244:
-				return (byte)(displayBufferBuffer[pixelPos.X, resolution.Y - 1 - pixelPos.Y]);
+				return displayBufferBuffer[pixelPos.X, pixelPos.Y];
 			case 254:
 				Random rand = new Random();
 				return (byte)rand.Next();

@@ -31,6 +31,7 @@ public partial class Main : Node
 	[Export] private Color PressedInput;
 	[Export] private CheckBox HexMode;
 	[Export] private CheckBox AssemblyFollow;
+	[Export] private OptionButton ResolutionOption;
 
 	bool paused = true;
 	int programCounter = 0;
@@ -54,8 +55,6 @@ public partial class Main : Node
 		Reset();
 
 		GetWindow().FilesDropped += LoadProgram;
-
-		display.DisplayInit();
 
 		StartStopButton.ButtonUp += StartStop;
 		StepButton.ButtonUp += Step;
@@ -119,10 +118,6 @@ public partial class Main : Node
 			}
 			waitCounter = (int)Math.Ceiling(100 / (double)instructionsPerSecond);
 		}
-
-		if (!display.shouldRender) return;
-		display.PushBuffer();
-		display.shouldRender = false;
 	}
 
 	public void SetSpeed(float value)
@@ -268,8 +263,10 @@ public partial class Main : Node
 	{
 		paused = !paused;
 		assemblyView.follow = AssemblyFollow.ButtonPressed && !paused;
+		ResolutionOption.Disabled = !paused;
 		StartStopButton.Text = paused ? "-Start-" : "-Stop-";
 		StartStopButton.ButtonPressed = !paused;
+		display.UpdateSprites(true);
 		if (programCounter == 0)
 			Reset();
 	}
@@ -283,7 +280,7 @@ public partial class Main : Node
 		UpdateVisualisers();
 	}
 
-	private void Reset()
+	public void Reset()
 	{
 		assemblyView.follow = AssemblyFollow.ButtonPressed;
 		programCounter = 0;
@@ -293,8 +290,6 @@ public partial class Main : Node
 		addressStack = new Stack<int>();
 		//StatusLabel.Text = "";
 		UpdateVisualisers();
-		display.DisplayInit();
-		if (!display.displayInitialized) return;
 		display.ClearBuffer();
 		display.PushBuffer();
 	}
